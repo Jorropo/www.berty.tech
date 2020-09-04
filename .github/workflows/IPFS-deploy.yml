@@ -1,0 +1,65 @@
+name: Deploy-to-IPFS
+
+on:
+  push:
+    # only run on master
+    branches: [ master ]
+
+jobs:
+  deploy:
+    name: IPFS deployment
+    runs-on: ubuntu-latest
+
+    env:
+      GITHUB_IPFS_CLUSTER_SECRET: ${{ secrets.GITHUB_IPFS_CLUSTER_SECRET }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install GO
+        uses: actions/setup-go@v2
+        with:
+          go-version: '1.15.1'
+
+      - name: Install IPFS
+        run: |
+          cd /tmp
+          # Download ipfs
+          wget https://github.com/ipfs/go-ipfs/releases/download/v0.6.0/go-ipfs_v0.6.0_linux-amd64.tar.gz
+          tar xf go-ipfs_v0.6.0_linux-amd64.tar.gz
+          cd go-ipfs
+          # Setup ipfs
+          sudo chmod root ipfs
+          sudo chgrp root ipfs
+          sudo ./install.sh
+          cd $GITHUB_WORKSPACE
+          # Setup IPFS
+          ipfs init --profile=server
+          python3 .github/ci/applyIPFSConfig.py
+          nohup ipfs daemon &> /dev/null
+          
+      - name: Install IPFS Cluster
+        run: |
+          cd /tmp
+          # Get IPFS cluster through IPFS because it's not published under release of github.
+          # Don't update this version without updating the whole cluster, most version are not cross compatible.
+          # Download ipfs-cluster-service
+          ipfs get /ipns/dist.ipfs.io/ipfs-cluster-service/v0.13.0/ipfs-cluster-service_v0.13.0_linux-amd64.tar.gz
+          tar xf ipfs-cluster-service_v0.13.0_linux-amd64.tar.gz
+          sudo chmod root ipfs-cluster-service/ipfs-cluster-service
+          sudo chgrp root ipfs-cluster-service/ipfs-cluster-service
+          sudo mv ipfs-cluster-service/ipfs-cluster-service /usr/local/bin/
+          
+          # Setup ipfs-cluster-service
+          cd $GITHUB_WORKSPACE
+          ipfs-cluster-service init
+          python3 .github/ci/applyIPFSClusterConfig.py
+          nohup ipfs-cluster-service daemon &> /dev/null
+          
+          # Download ipfs-cluster-ctl
+          ipfs get /ipns/dist.ipfs.io/ipfs-cluster-ctl/v0.13.0/ipfs-cluster-ctl_v0.13.0_linux-amd64.tar.gz
+          tar xf ipfs-cluster-ctl_v0.13.0_linux-amd64.tar.gz
+          sudo chmod root ipfs-cluster-ctl/ipfs-cluster-ctl
+          sudo chgrp root ipfs-cluster-ctl/ipfs-cluster-ctl
+          sudo mv ipfs-cluster-ctl/ipfs-cluster-ctl /usr/local/bin/
